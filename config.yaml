@@ -1,0 +1,27 @@
+# HDFS Log Anomaly Detection Pipeline Configuration
+# Simple configuration with essential parameters
+
+# Input/Output Configuration
+input:
+  log_file: "Data/hdfs_v1/HDFS.log"
+  labels_file: "Data/hdfs_v1/anomaly_label.csv"
+  max_lines: 1000
+
+output:
+  format: "csv"  # Options: csv, pickle, json
+  prefix: "hdfs_sequences"
+  output_dir: "Output"  # Output directory for all generated files
+
+# Drain3 Configuration
+drain3:
+  persistence_file: "drain3_state.json"
+  similarity_threshold: 0.4      # Similarity threshold for template matching
+  tree_depth: 4                  # Tree depth for template mining
+  max_children: 100              # Max children per node
+  max_clusters: 1000             # Max number of clusters
+
+# Sequence Creation Configuration
+sequences:
+  time_window:
+    window_size_seconds: 60      # Size of each time window in seconds
+    overlap_seconds: 0           # Overlap between consecutive windows in seconds
