@@ -62,7 +62,7 @@ class DatasetBuilder:
                 elif self.anomaly_labels[seq_id] == "Anomaly":
                      anomaly_binary_value = 1
                 features['anomaly_binary_val'] = anomaly_binary_value
-                features['anomaly_labels'] = self.anomaly_labels
+                features['anomaly_labels'] = self.anomaly_labels[seq_id]
             else:
                 print("NOT FOUND")
                 features['anomaly_label'] = -1  # Unknown label
