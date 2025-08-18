@@ -60,7 +60,6 @@ def main():
             config['input']['log_file'], 
             max_lines=config['input']['max_lines']
         )
-        
         if not parsed_logs:
             print("No logs were successfully parsed. Exiting.")
             sys.exit(1)
@@ -69,84 +68,85 @@ def main():
         print("\nStep 2: Creating sequences...")
         sequence_creator = SequenceCreator(parsed_logs, config)
         
-        # Create block-based sequences
+        # Create sequences
         block_sequences = sequence_creator.group_by_block()
-       
-        # Create time-window sequences
         time_sequences = sequence_creator.group_by_time_window()
-        
-        # Combine all sequences
         all_sequences = {**block_sequences, **time_sequences}
         
-        # Print sequence statistics for debugging
-        sequence_creator.print_sequence_statistics()
         
         # Step 3: Convert sequences back to DataFrame format
         print("\nStep 3: Converting sequences to DataFrame format...")
-        
-        # Use the new method to get logs DataFrame
+        sequence_creator.print_sequence_statistics()
         logs_df = sequence_creator.get_logs_dataframe()
-        
-        print(f"Created DataFrame with {len(logs_df)} log entries and {len(logs_df.columns)} columns")
-        print(f"Columns: {list(logs_df.columns)}")
-        
-        # Show a sample of the DataFrame
-        if not logs_df.empty:
-            print(f"\nSample of logs DataFrame (first 3 rows):")
-            print(logs_df.head(3).to_string())
-        
-        # Save the logs DataFrame to output directory
+    
         logs_output_file = os.path.join(output_dir, f"{config['output']['prefix']}_logs.{config['output']['format']}")
         save_dataframe_to_file(logs_df, logs_output_file, config['output']['format'])
         
         # Also save individual sequence type DataFrames to output directory
         block_logs_df = sequence_creator.get_block_sequences_dataframe()
         time_logs_df = sequence_creator.get_time_sequences_dataframe()
-        
-        if not block_logs_df.empty:
-            block_output_file = os.path.join(output_dir, f"{config['output']['prefix']}_block_logs.{config['output']['format']}")
-            save_dataframe_to_file(block_logs_df, block_output_file, config['output']['format'])
-        
-        if not time_logs_df.empty:
-            time_output_file = os.path.join(output_dir, f"{config['output']['prefix']}_time_logs.{config['output']['format']}")
-            save_dataframe_to_file(time_logs_df, time_output_file, config['output']['format'])
-        
+
+
         # Step 4: Load anomaly labels
         print("\nStep 4: Loading anomaly labels...")
         anomaly_labels = load_anomaly_labels(config['input']['labels_file'])
+      
+        # Cal some metrics to save m
+        dataset_builder = DatasetBuilder(block_sequences, anomaly_labels=anomaly_labels, config=config)
+
+        #block sequence 
+        block_output_file = os.path.join(output_dir, f"{config['output']['block_prefix']}.{config['output']['format']}")
+        block_dataset = dataset_builder.build_block_training_dataset()
+       
+ 
+        dataset_builder.save_sequences(block_dataset, block_output_file, format=config['output']['format'])
+       
+        block_logs_df.to_csv('test.csv', index=False) 
+
+        
+        
+        # if not block_logs_df.empty:
+        #     block_output_file = os.path.join(output_dir, f"{config['output']['prefix']}_block_logs.{config['output']['format']}")
+        #     save_dataframe_to_file(block_logs_df, block_output_file, config['output']['format'])
+        
+        # if not time_logs_df.empty:
+        #     time_output_file = os.path.join(output_dir, f"{config['output']['prefix']}_time_logs.{config['output']['format']}")
+        #     save_dataframe_to_file(time_logs_df, time_output_file, config['output']['format'])
+        
+        
         
         # Step 5: Build and save dataset to output directory
-        print("\nStep 5: Building and saving dataset...")
-        dataset_builder = DatasetBuilder(all_sequences, anomaly_labels, config)
+        # print("\nStep 5: Building and saving dataset...")
+        # dataset_builder = DatasetBuilder(all_sequences, anomaly_labels_df, config)
         
-        # Save sequences to output directory
-        output_file = os.path.join(output_dir, f"{config['output']['prefix']}.{config['output']['format']}")
-        dataset_builder.save_sequences(output_file, format=config['output']['format'])
+        # # Save sequences to output directory
+        # output_file = os.path.join(output_dir, f"{config['output']['prefix']}.{config['output']['format']}")
+        # dataset_builder.save_sequences(output_file, format=config['output']['format'])
         
-        # Show summary
-        print("\n" + "="*60)
-        print("PIPELINE SUMMARY")
-        print("="*60)
-        print(f"Total logs parsed: {len(parsed_logs):,}")
-        print(f"Unique templates found: {drain_parser.template_count}")
-        print(f"Block sequences: {len(block_sequences):,}")
-        print(f"Time-window sequences: {len(time_sequences):,}")
-        print(f"Total sequences: {len(all_sequences):,}")
-        print(f"Logs DataFrame created: {len(logs_df):,} entries")
-        print(f"Logs DataFrame columns: {list(logs_df.columns)}")
-        if not block_logs_df.empty:
-            print(f"Block logs DataFrame: {len(block_logs_df):,} entries")
-        if not time_logs_df.empty:
-            print(f"Time logs DataFrame: {len(time_logs_df):,} entries")
-        print(f"Anomaly labels loaded: {len(anomaly_labels):,}")
-        print(f"Sequences output saved to: {output_file}")
-        print(f"Logs DataFrame saved to: {logs_output_file}")
-        if not block_logs_df.empty:
-            print(f"Block logs DataFrame saved to: {block_output_file}")
-        if not time_logs_df.empty:
-            print(f"Time logs DataFrame saved to: {time_output_file}")
-        print(f"All outputs saved to directory: {output_dir}")
-        print("\nPipeline complete! Ready for anomaly detection model training.")
+        # # Show summary
+        # print("\n" + "="*60)
+        # print("PIPELINE SUMMARY")
+        # print("="*60)
+        # print(f"Total logs parsed: {len(parsed_logs):,}")
+        # print(f"Unique templates found: {drain_parser.template_count}")
+        # print(f"Block sequences: {len(block_sequences):,}")
+        # print(f"Time-window sequences: {len(time_sequences):,}")
+        # print(f"Total sequences: {len(all_sequences):,}")
+        # print(f"Logs DataFrame created: {len(logs_df):,} entries")
+        # print(f"Logs DataFrame columns: {list(logs_df.columns)}")
+        # if not block_logs_df.empty:
+        #     print(f"Block logs DataFrame: {len(block_logs_df):,} entries")
+        # if not time_logs_df.empty:
+        #     print(f"Time logs DataFrame: {len(time_logs_df):,} entries")
+        # print(f"Anomaly labels loaded: {len(anomaly_labels_df):,}")
+        # print(f"Sequences output saved to: {output_file}")
+        # print(f"Logs DataFrame saved to: {logs_output_file}")
+        # if not block_logs_df.empty:
+        #     print(f"Block logs DataFrame saved to: {block_output_file}")
+        # if not time_logs_df.empty:
+        #     print(f"Time logs DataFrame saved to: {time_output_file}")
+        # print(f"All outputs saved to directory: {output_dir}")
+        # print("\nPipeline complete! Ready for anomaly detection model training.")
         
     except Exception as e:
         print(f"Error during execution: {e}")

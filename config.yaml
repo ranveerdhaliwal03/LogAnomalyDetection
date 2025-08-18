@@ -5,11 +5,13 @@
 input:
   log_file: "Data/hdfs_v1/HDFS.log"
   labels_file: "Data/hdfs_v1/anomaly_label.csv"
-  max_lines: 1000
+  max_lines: 10000
 
 output:
   format: "csv"  # Options: csv, pickle, json
   prefix: "hdfs_sequences"
+  block_prefix: "block_sequences"
+  window_prefix: "window_sequences"
   output_dir: "Output"  # Output directory for all generated files
 
 # Drain3 Configuration

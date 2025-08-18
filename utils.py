@@ -11,8 +11,6 @@ from typing import Dict, Any
 
 def load_anomaly_labels(labels_file: str) -> Dict[str, int]:
     """
-    Load anomaly labels from CSV file.
-    
     Args:
         labels_file: Path to CSV file with anomaly labels
         
@@ -24,11 +22,17 @@ def load_anomaly_labels(labels_file: str) -> Dict[str, int]:
         return {}
     
     try:
+        # Load CSV into DataFrame
         df = pd.read_csv(labels_file)
-        # Assuming CSV has columns: sequence_id, anomaly_label
-        labels = dict(zip(df['sequence_id'], df['anomaly_label']))
+
+        # Fix the BlockId column before converting
+        df['BlockId'] = df['BlockId'].str.replace("^blk_", "block_", regex=True)
+
+        # Convert to dictionary
+        labels = dict(zip(df['BlockId'], df['Label']))
         print(f"Loaded {len(labels)} anomaly labels from {labels_file}")
         return labels
+
     except Exception as e:
         print(f"Error loading anomaly labels: {e}")
         return {}
