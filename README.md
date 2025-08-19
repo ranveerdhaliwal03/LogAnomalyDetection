@@ -1,22 +1,20 @@
-# HDFS Log Anomaly Detection -- Deep Dive on Block‑Level and Window‑Level Models
+# HDFS Log Anomaly Detection -- Deep Dive on Block-Level and Window-Level Models
 
-
-
-A comprehensive tool for detecting anomalies in HDFS logs using both supervised and unsupervised machine learning approaches.
+A comprehensive tool for detecting anomalies in HDFS logs using both supervised and unsupervised machine learning approaches.  
 This project detects anomalies in Hadoop HDFS logs on two levels that complement each other:
-  - Block‑level (micro view): “Is this block’s lifecycle normal?”
-  - Window‑level (macro view): “Is this time slice of the system behaving normally?”
+  - Block-level (micro view): “Is this block’s lifecycle normal?”
+  - Window-level (macro view): “Is this time slice of the system behaving normally?”
 
-Both levels share the same parsing/encoding (Drain3 → log templates) so the models agree on what an “event” is. 
-The block model is supervised on HDFS_v1 labels; the window model is unsupervised, so it generalizes to new datasets 
-(e.g., HDFS_v2/v3) and surfaces system‑wide issues without ground truth.
+Both levels share the same parsing/encoding (Drain3 → log templates) so the models agree on what an “event” is.  
+The block model is supervised on HDFS_v1 labels; the window model is unsupervised, so it generalizes to new datasets  
+(e.g., HDFS_v2/v3) and surfaces system-wide issues without ground truth.
 
-#Why two levels?
+# Why two levels?
 
-**Block‑level Anomaly Detection (Supervised)**
-**Problem definition:** Predict whether a block sequence (all events for a single block_id) is normal or anomalous.
-**What:** All log lines associated to the same block_id (HDFS unit of work).
-**Why:** Anomalies in HDFS benchmarks are labeled at the block level (via anomaly_label.csv). This enables supervised learning and objective metrics (Precision/Recall/F1/ROC‑AUC).
+**Block-level Anomaly Detection (Supervised)**  
+**Problem definition:** Predict whether a block sequence (all events for a single block_id) is normal or anomalous.  
+**What:** All log lines associated to the same block_id (HDFS unit of work).  
+**Why:** Anomalies in HDFS benchmarks are labeled at the block level (via anomaly_label.csv). This enables supervised learning and objective metrics (Precision/Recall/F1/ROC-AUC).  
 **Value:** Catches localized faults (e.g., a replication failure for a specific block) and provides clear, actionable context to engineers (the exact block lifecycle that went wrong).
 
 At the block level, the system treats a sliding window of log messages as a single observation. Each raw log line is first parsed into a template ID (using **Drain3 parsing**) so that variable values like IP addresses or request IDs are abstracted away, leaving behind only the underlying event structure. These template IDs within each block are then vectorized using **TF-IDF**, which transforms the block into a sparse numerical feature vector representing the relative frequency and importance of each template. This approach was chosen because TF-IDF is lightweight, interpretable, and effective for capturing frequency-based signals while ignoring irrelevant noise.
@@ -25,11 +23,12 @@ For model training, I used a **Logistic Regression classifier**. The choice of L
 
 This design decision gives us a strong baseline: it quickly highlights when a block diverges from typical system behavior without requiring sequence-aware models. However, because TF-IDF and Logistic Regression ignore order and temporal structure, anomalies that depend on subtle transitions between log events may go undetected. This limitation is precisely why we later extended the system to window-level sequence modeling — but block-level detection remains a simple, reliable foundation that works well for frequency-driven anomalies.
 
+---
 
-**Window‑level (macro)**
-**Problem definition:** Score each time (or count) window for how “unusual” it is relative to normal behavior—without labels. Then highlight which lines/templates make it suspicious.
-**What:** Sliding time or count windows (e.g., 60s or every 100 lines) across the entire log stream.
-**Why:** Real outages can be system‑wide and may not map neatly to a single block_id. Also, new datasets (v2/v3) might lack labels, so we need unsupervised detection.
+**Window-level (Unsupervised)**  
+**Problem definition:** Score each time (or count) window for how “unusual” it is relative to normal behavior—without labels. Then highlight which lines/templates make it suspicious.  
+**What:** Sliding time or count windows (e.g., 60s or every 100 lines) across the entire log stream.  
+**Why:** Real outages can be system-wide and may not map neatly to a single block_id. Also, new datasets (v2/v3) might lack labels, so we need unsupervised detection.  
 **Value:** Catches bursts, drifts, and rare traffic patterns across components, even when no labels are available, making it deployable on new domains.
 
 While block-level detection provided a strong frequency-based baseline, it had a critical limitation: it completely ignored the temporal order of events. In real-world systems, many anomalies arise not from the presence of an unusual template itself, but from the sequence in which otherwise normal templates occur. For example, an authentication success immediately followed by an error may indicate suspicious behavior even if both events are individually common. To capture these patterns, we extended our approach to window-level sequence modeling.
@@ -40,11 +39,12 @@ For the implementation, we used the Isolation Forest algorithm, which is well-su
 
 While Isolation Forest provided a solid balance between scalability and interpretability, we also considered more sequence-aware models to enhance accuracy:
 
-Markov Chains: Model the transition probabilities between log templates, flagging anomalies when unlikely or unseen transitions occur.
-
-LSTM-based Predictors (DeepLog-style): Train a neural sequence model to predict the next event in a sequence; if the observed event is outside the predicted set, it is marked anomalous.
+- **Markov Chains**: Model the transition probabilities between log templates, flagging anomalies when unlikely or unseen transitions occur.  
+- **LSTM-based Predictors (DeepLog-style)**: Train a neural sequence model to predict the next event in a sequence; if the observed event is outside the predicted set, it is marked anomalous.
 
 We chose Isolation Forest as the initial implementation because it is lightweight, interpretable, and robust across datasets, making it a practical starting point. However, the Markov and LSTM approaches represent natural next steps for improving the system’s ability to capture complex temporal dependencies.
+
+---
 
 ## Architecture
 
