@@ -90,17 +90,14 @@ block_detection:
 ```
 
 
-## Usage Examples
 # Full pipeline (parse → block + window datasets → train → score)
 python run_anomaly_detection.py
 
-# Block‑only supervised training & eval
+# Block-only supervised training & eval
 python run_anomaly_detection.py --block-only
 
-
-# Window‑only unsupervised training & scoring
+# Window-only unsupervised training & scoring
 python run_anomaly_detection.py --window-only
-
 
 # Useful options (see config.yaml)
 # --window-size, --window-overlap, --contamination, --topk, --save-path, etc.
