@@ -1,20 +1,50 @@
-# HDFS Log Anomaly Detection Pipeline
+# HDFS Log Anomaly Detection -- Deep Dive on Block‑Level and Window‑Level Models
+
+
 
 A comprehensive tool for detecting anomalies in HDFS logs using both supervised and unsupervised machine learning approaches.
+This project detects anomalies in Hadoop HDFS logs on two levels that complement each other:
+  - Block‑level (micro view): “Is this block’s lifecycle normal?”
+  - Window‑level (macro view): “Is this time slice of the system behaving normally?”
 
-## Features
+Both levels share the same parsing/encoding (Drain3 → log templates) so the models agree on what an “event” is. 
+The block model is supervised on HDFS_v1 labels; the window model is unsupervised, so it generalizes to new datasets 
+(e.g., HDFS_v2/v3) and surfaces system‑wide issues without ground truth.
 
-### 🔧 **Fixed Issues**
-- **Timestamp Parsing**: Fixed microsecond overflow errors when parsing logs with milliseconds > 999
-- **Large Log Handling**: Improved performance for logs over 1 million lines
+#Why two levels?
 
-### 🚀 **New Features**
-- **Dual Model Support**: 
-  - **Block-level Supervised**: TF-IDF + Logistic Regression/XGBoost with anomaly labels
-  - **Window-level Unsupervised**: Isolation Forest, One-Class SVM on sliding windows
-- **Flexible Execution**: Run models separately or together
-- **Enhanced CLI**: Easy model selection and configuration
-- **Comprehensive Evaluation**: Precision/Recall/F1 metrics for labeled data
+**Block‑level Anomaly Detection (Supervised)**
+**Problem definition:** Predict whether a block sequence (all events for a single block_id) is normal or anomalous.
+**What:** All log lines associated to the same block_id (HDFS unit of work).
+**Why:** Anomalies in HDFS benchmarks are labeled at the block level (via anomaly_label.csv). This enables supervised learning and objective metrics (Precision/Recall/F1/ROC‑AUC).
+**Value:** Catches localized faults (e.g., a replication failure for a specific block) and provides clear, actionable context to engineers (the exact block lifecycle that went wrong).
+
+At the block level, the system treats a sliding window of log messages as a single observation. Each raw log line is first parsed into a template ID (using **Drain3 parsing**) so that variable values like IP addresses or request IDs are abstracted away, leaving behind only the underlying event structure. These template IDs within each block are then vectorized using **TF-IDF**, which transforms the block into a sparse numerical feature vector representing the relative frequency and importance of each template. This approach was chosen because TF-IDF is lightweight, interpretable, and effective for capturing frequency-based signals while ignoring irrelevant noise.
+
+For model training, I used a **Logistic Regression classifier**. The choice of Logistic Regression was deliberate: it is fast to train and provides a clear probability score for each block, which can be use to tune decision thresholds depending on whether we want higher recall (catching more anomalies) or higher precision (avoiding false alarms). Training is done by pairing each block with its anomaly label (from the benchmark dataset), and the model learns to differentiate between "normal" and "anomalous" blocks based on the distribution of templates.
+
+This design decision gives us a strong baseline: it quickly highlights when a block diverges from typical system behavior without requiring sequence-aware models. However, because TF-IDF and Logistic Regression ignore order and temporal structure, anomalies that depend on subtle transitions between log events may go undetected. This limitation is precisely why we later extended the system to window-level sequence modeling — but block-level detection remains a simple, reliable foundation that works well for frequency-driven anomalies.
+
+
+**Window‑level (macro)**
+**Problem definition:** Score each time (or count) window for how “unusual” it is relative to normal behavior—without labels. Then highlight which lines/templates make it suspicious.
+**What:** Sliding time or count windows (e.g., 60s or every 100 lines) across the entire log stream.
+**Why:** Real outages can be system‑wide and may not map neatly to a single block_id. Also, new datasets (v2/v3) might lack labels, so we need unsupervised detection.
+**Value:** Catches bursts, drifts, and rare traffic patterns across components, even when no labels are available, making it deployable on new domains.
+
+While block-level detection provided a strong frequency-based baseline, it had a critical limitation: it completely ignored the temporal order of events. In real-world systems, many anomalies arise not from the presence of an unusual template itself, but from the sequence in which otherwise normal templates occur. For example, an authentication success immediately followed by an error may indicate suspicious behavior even if both events are individually common. To capture these patterns, we extended our approach to window-level sequence modeling.
+
+In this setup, I treat each log block as an ordered sequence of events. Each block is represented by the series of template IDs in the order they appear, preserving temporal structure. To model this, we experimented with n-gram–based TF-IDF features, where bigrams and trigrams capture local transitions between templates. This simple extension allows the model to recognize unusual short-term sequences that would be invisible in unigram-only TF-IDF.
+
+For the implementation, we used the Isolation Forest algorithm, which is well-suited for unsupervised anomaly detection in high-dimensional data. Each windowed sequence of logs was first transformed into a numerical feature vector using n-gram TF-IDF representations, capturing both the frequency and local ordering of templates. These vectors were then passed into Isolation Forest, which works by randomly partitioning feature space and isolating points that require fewer partitions. In practice, this means windows with unusual event patterns are scored as anomalies. This approach provides a computationally efficient, unsupervised way to identify rare or abnormal execution flows without requiring labeled data — a key requirement when moving from v1 logs (with anomaly labels) to v2/v3 logs (without labels).
+
+While Isolation Forest provided a solid balance between scalability and interpretability, we also considered more sequence-aware models to enhance accuracy:
+
+Markov Chains: Model the transition probabilities between log templates, flagging anomalies when unlikely or unseen transitions occur.
+
+LSTM-based Predictors (DeepLog-style): Train a neural sequence model to predict the next event in a sequence; if the observed event is outside the predicted set, it is marked anomalous.
+
+We chose Isolation Forest as the initial implementation because it is lightweight, interpretable, and robust across datasets, making it a practical starting point. However, the Markov and LSTM approaches represent natural next steps for improving the system’s ability to capture complex temporal dependencies.
 
 ## Architecture
 
@@ -38,45 +68,7 @@ HDFS Logs → Drain3 Parsing → Sequence Creation → Feature Extraction → Mo
                             └─────────────────┴─────────────────┘
 ```
 
-## Installation
 
-1. **Clone the repository**:
-```bash
-git clone <repository-url>
-cd LogAnomalyDetection
-```
-
-2. **Install dependencies**:
-```bash
-pip install -r requirements.txt
-```
-
-3. **Verify installation**:
-```bash
-python -c "import drain3, sklearn, pandas, numpy; print('All dependencies installed!')"
-```
-
-## Quick Start
-
-### 🎯 **Run Both Models (Default)**
-```bash
-python run_anomaly_detection.py
-```
-
-### 🔍 **Block-Level Supervised Only**
-```bash
-python run_anomaly_detection.py --block-only
-```
-
-### 📊 **Window-Level Unsupervised Only**
-```bash
-python run_anomaly_detection.py --window-only
-```
-
-### ⚙️ **Custom Configuration**
-```bash
-python run_anomaly_detection.py --config my_config.yaml --max-lines 500000
-```
 
 ## Configuration
 
@@ -97,47 +89,22 @@ block_detection:
   validation_size: 0.1          # Validation set proportion
 ```
 
-## Model Details
-
-### 🔗 **Block-Level Supervised Model**
-- **Purpose**: Detect anomalies in specific HDFS block operations
-- **Features**: TF-IDF of template sequences + metadata (length, time span)
-- **Models**: Logistic Regression, XGBoost, LightGBM
-- **Requires**: Anomaly labels (`anomaly_label.csv`)
-- **Output**: Binary classification (Normal/Anomaly)
-
-### 🪟 **Window-Level Unsupervised Model**
-- **Purpose**: Detect anomalous time windows in log streams
-- **Features**: TF-IDF of template sequences + metadata (log count, time span, unique templates)
-- **Models**: Isolation Forest, One-Class SVM, Local Outlier Factor
-- **Requires**: No labels (fully unsupervised)
-- **Output**: Anomaly scores and rankings
 
 ## Usage Examples
-
-### 📁 **Basic Usage with HDFS v1 Dataset**
-```bash
-# Run both models on full dataset
+# Full pipeline (parse → block + window datasets → train → score)
 python run_anomaly_detection.py
 
-# Run only unsupervised model (no labels needed)
+# Block‑only supervised training & eval
+python run_anomaly_detection.py --block-only
+
+
+# Window‑only unsupervised training & scoring
 python run_anomaly_detection.py --window-only
 
-# Limit to first 500k lines for testing
-python run_anomaly_detection.py --max-lines 500000
-```
 
-### 🔧 **Advanced Usage**
-```bash
-# Direct pipeline execution
-python hdfs_anomaly_detection.py --model window_unsupervised
+# Useful options (see config.yaml)
+# --window-size, --window-overlap, --contamination, --topk, --save-path, etc.
 
-# Custom configuration
-python hdfs_anomaly_detection.py --config production_config.yaml
-
-# Specific model with custom parameters
-python hdfs_anomaly_detection.py --model block_supervised --max-lines 1000000
-```
 
 ## Output Files
 
@@ -154,81 +121,10 @@ Output/
 └── window_models/              # Trained window models
 ```
 
-## Model Evaluation
 
-### 📊 **Supervised Models (Block-level)**
-- **Metrics**: Precision, Recall, F1-Score, ROC-AUC
-- **Cross-validation**: Stratified k-fold
-- **Class balancing**: Automatic handling of imbalanced data
 
-### 📈 **Unsupervised Models (Window-level)**
-- **Metrics**: Anomaly scores, top-N rankings
-- **Evaluation**: Precision/Recall/F1 (if labels available)
-- **Interpretability**: Feature importance and anomaly explanations
 
-## Performance Tips
-
-### 🚀 **For Large Logs (>1M lines)**
-1. **Use `--max-lines`** to limit parsing for testing
-2. **Adjust window size** based on your anomaly patterns
-3. **Monitor memory usage** during TF-IDF vectorization
-
-### ⚡ **Optimization Settings**
-```yaml
-# Reduce memory usage
-tfidf_max_features: 500        # Instead of 1000+
-window_size: 50                # Smaller windows for faster processing
-
-# Improve accuracy
-contamination: 0.05            # Lower for rare anomalies
-tfidf_ngram_range: [1, 3]     # Include trigrams
-```
-
-## Troubleshooting
-
-### ❌ **Common Issues**
-
-1. **Memory Errors**: Reduce `tfidf_max_features` or `window_size`
-2. **Slow Processing**: Use `--max-lines` for testing, adjust overlap
-3. **Import Errors**: Ensure all dependencies are installed
-4. **Timestamp Warnings**: Fixed in latest version, safe to ignore
-
-### 🔍 **Debug Mode**
-```bash
-# Verbose logging
-python -u hdfs_anomaly_detection.py --model window_unsupervised 2>&1 | tee debug.log
-```
-
-## Contributing
-
-1. **Fork the repository**
-2. **Create a feature branch**
-3. **Add tests for new functionality**
-4. **Submit a pull request**
-
-## License
-
-This project is licensed under the MIT License - see the LICENSE file for details.
 
 ## Citation
-
-If you use this tool in your research, please cite:
-
-```bibtex
-@software{hdfs_anomaly_detection,
-  title={HDFS Log Anomaly Detection Pipeline},
-  author={Your Name},
-  year={2024},
-  url={https://github.com/yourusername/LogAnomalyDetection}
-}
-```
-
-## Support
-
-- **Issues**: GitHub Issues
-- **Discussions**: GitHub Discussions
-- **Email**: your.email@example.com
-
----
-
-**Happy anomaly hunting! 🕵️‍♂️**
+Jingwen Zhou, Zhenbang Chen, Ji Wang, Zibin Zheng, and Michael R. Lyu. TraceBench: An Open Data Set for Trace-oriented Monitoring, in Proceedings of the 6th IEEE International Conference on Cloud Computing Technology and Science (CloudCom), 2014.
+Jieming Zhu, Shilin He, Pinjia He, Jinyang Liu, Michael R. Lyu. Loghub: A Large Collection of System Log Datasets for AI-driven Log Analytics. IEEE International Symposium on Software Reliability Engineering (ISSRE), 2023.
