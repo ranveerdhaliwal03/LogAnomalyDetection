@@ -17,13 +17,10 @@ class DatasetBuilder:
                  anomaly_labels: Optional[Dict[str, int]] = None,
                  config: Dict[str, Any] = None):
         
-        if block_sequences is None and window_sequences is None:
-            raise AssertionError("Need to have at least one Sequence")
-        if block_sequences is not None:
-            self.block_sequences = block_sequences
-        if window_sequences is not None:
-            self.window_sequences = window_sequences
-
+        # Allow initialization without sequences for window detection
+        # Sequences can be added later via build_window_dataset or build_block_training_dataset
+        self.block_sequences = block_sequences
+        self.window_sequences = window_sequences
         self.anomaly_labels = anomaly_labels or {}
         self.config = config or {}
         
@@ -73,6 +70,75 @@ class DatasetBuilder:
         print(f"Built dataset with {len(dataset)} sequences and {len(dataset.columns)} features")
         return dataset
 
+    def build_window_dataset(self, logs: list, window_size: int = 100, overlap: int = 0) -> pd.DataFrame:
+        """
+        Build a window-level dataset for unsupervised anomaly detection.
+        
+        Args:
+            logs: List of parsed log dictionaries
+            window_size: Number of log entries per window
+            overlap: Number of overlapping entries between consecutive windows
+            
+        Returns:
+            DataFrame with window_id and templates_seq columns
+        """
+        print(f"\nBuilding window-level dataset (window_size={window_size}, overlap={overlap})...")
+        
+        if not logs:
+            print("No logs provided for window dataset creation")
+            return pd.DataFrame()
+        
+        # Filter logs with valid timestamps and sort by time
+        valid_logs = [log for log in logs if log['timestamp']]
+        valid_logs.sort(key=lambda x: x['timestamp'])
+        
+        if not valid_logs:
+            print("No valid timestamps found for window dataset creation")
+            return pd.DataFrame()
+        
+        print(f"Creating windows from {len(valid_logs)} valid log entries...")
+        
+        window_rows = []
+        window_id = 0
+        step_size = window_size - overlap
+        
+        for i in range(0, len(valid_logs), step_size):
+            end_idx = min(i + window_size, len(valid_logs))
+            window_logs = valid_logs[i:end_idx]
+            
+            if len(window_logs) >= window_size // 2:  # Only create windows with at least half the target size
+                # Extract template IDs for this window
+                template_sequence = [log['template_id'] for log in window_logs]
+                template_sequence_str = ','.join(map(str, template_sequence))
+                
+                # Calculate window metadata
+                start_time = window_logs[0]['timestamp']
+                end_time = window_logs[-1]['timestamp']
+                time_span = (end_time - start_time).total_seconds()
+                
+                window_row = {
+                    'window_id': f"window_{window_id}",
+                    'start_idx': i,
+                    'end_idx': end_idx,
+                    'start_time': start_time,
+                    'end_time': end_time,
+                    'time_span': time_span,
+                    'log_count': len(window_logs),
+                    'template_sequence': template_sequence,
+                    'template_sequence_str': template_sequence_str,
+                    'unique_templates': len(set(template_sequence))
+                }
+                
+                window_rows.append(window_row)
+                window_id += 1
+        
+        dataset = pd.DataFrame(window_rows)
+        print(f"Built window dataset with {len(dataset)} windows")
+        print(f"Average window size: {dataset['log_count'].mean():.1f} logs")
+        print(f"Average time span: {dataset['time_span'].mean():.1f} seconds")
+        
+        return dataset
+
     def save_sequences(self, dataset, output_path: str, format: str = 'csv') -> None:
         """
         Save sequences to file.
@@ -86,3 +152,11 @@ class DatasetBuilder:
         if format.lower() == 'csv':
             dataset.to_csv(output_path, index=False)
             print(f"Saved {len(dataset)} sequences to CSV")
+        elif format.lower() == 'pickle':
+            dataset.to_pickle(output_path)
+            print(f"Saved {len(dataset)} sequences to pickle")
+        elif format.lower() == 'json':
+            dataset.to_json(output_path, orient='records', date_format='iso')
+            print(f"Saved {len(dataset)} sequences to JSON")
+        else:
+            raise ValueError(f"Unsupported format: {format}")

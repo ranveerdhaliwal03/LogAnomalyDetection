@@ -14,7 +14,17 @@ PyYAML>=6.0
 pathlib2>=2.3.0; python_version < "3.4"
 typing-extensions>=4.0.0; python_version < "3.8"
 
-# Optional: for advanced analysis
+# Machine Learning and Anomaly Detection
 scikit-learn>=1.0.0
+scipy>=1.7.0
+
+# Optional: for advanced analysis and visualization
 matplotlib>=3.5.0
 seaborn>=0.11.0
+
+# Optional: for enhanced ML models
+xgboost>=1.5.0
+lightgbm>=3.3.0
+
+# Optional: for better performance
+joblib>=1.1.0

@@ -5,7 +5,7 @@
 input:
   log_file: "Data/hdfs_v1/HDFS.log"
   labels_file: "Data/hdfs_v1/anomaly_label.csv"
-  max_lines: 10000
+  max_lines: 1000000
 
 output:
   format: "csv"  # Options: csv, pickle, json
@@ -27,3 +27,19 @@ sequences:
   time_window:
     window_size_seconds: 60      # Size of each time window in seconds
     overlap_seconds: 0           # Overlap between consecutive windows in seconds
+
+# Window-level Anomaly Detection Configuration
+window_detection:
+  window_size: 100               # Number of log entries per window
+  overlap: 0                     # Number of overlapping entries between windows
+  tfidf_max_features: 1000      # Maximum TF-IDF features for window sequences
+  tfidf_ngram_range: [1, 2]     # N-gram range for TF-IDF
+  contamination: 0.1             # Expected proportion of anomalies for unsupervised models
+  models: ["isolation_forest", "one_class_svm"]  # Models to train
+
+# Block-level Anomaly Detection Configuration
+block_detection:
+  tfidf_max_features: 1000      # Maximum TF-IDF features for block sequences
+  tfidf_ngram_range: [1, 2]     # N-gram range for TF-IDF
+  test_size: 0.2                # Test set size for supervised models
+  validation_size: 0.1          # Validation set size for supervised models

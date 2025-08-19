@@ -67,7 +67,15 @@ class LogParser:
             minute = int(time_str[2:4])
             second = int(time_str[4:6])
             
-            timestamp = datetime(2008, month, day, hour, minute, second, int(milliseconds) * 1000)
+            # Handle milliseconds properly - ensure microseconds stay within valid range
+            ms_int = int(milliseconds)
+            if ms_int > 999:
+                # If milliseconds > 999, truncate to 999 to avoid microsecond overflow
+                microseconds = 999000
+            else:
+                microseconds = ms_int * 1000
+                
+            timestamp = datetime(2008, month, day, hour, minute, second, microseconds)
         except Exception as e:
             print(f"Warning: Failed to parse timestamp from '{line}': {e}")
             timestamp = None
