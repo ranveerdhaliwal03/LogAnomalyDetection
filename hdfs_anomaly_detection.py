@@ -18,6 +18,7 @@ from typing import List, Dict, Any, Tuple, Optional
 
 # Import our modular components
 from log_parser import LogParser
+from block_model import BlockAnomalyDetector
 from sequence_creator import SequenceCreator
 from dataset_builder import DatasetBuilder
 from config_utils import load_config
@@ -97,9 +98,17 @@ def main():
         block_output_file = os.path.join(output_dir, f"{config['output']['block_prefix']}.{config['output']['format']}")
         block_dataset_df = dataset_builder.build_block_training_dataset()
        
-        dataset_builder.save_sequences(block_dataset_df, block_output_file, format=config['output']['format'])
-       
+        #dataset_builder.save_sequences(block_dataset_df, block_output_file, format=config['output']['format'])
+        print("\nStep 5: Initializing detector...")
+        detector = BlockAnomalyDetector(tfidf_max_features=500, tfidf_ngram_range=(1, 2), random_state=42)
+        results = detector.train_models(block_dataset_df, test_size=0.2)
 
+        # Save models
+        print("\n4. Saving models...")
+        detector.save_models('demo_models')
+        
+        print("\n=== Demo completed ===")
+            
 
         
         
