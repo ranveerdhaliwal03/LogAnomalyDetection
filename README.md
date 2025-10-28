@@ -1,9 +1,8 @@
-# HDFS Log Anomaly Detection -- Deep Dive on Block-Level and Window-Level Models
+# HDFS Log Anomaly Detection -- Block-Level and Window-Level Models
 
-A comprehensive tool for detecting anomalies in HDFS logs using both supervised and unsupervised machine learning approaches.  
 This project detects anomalies in Hadoop HDFS logs on two levels that complement each other:
-  - Block-level (micro view): “Is this block’s lifecycle normal?”
-  - Window-level (macro view): “Is this time slice of the system behaving normally?”
+  - Block-level: “Is this block’s lifecycle normal?”
+  - Window-level: “Is this time slice of the system behaving normally?”
 
 Both levels share the same parsing/encoding (Drain3 → log templates) so the models agree on what an “event” is.  
 The block model is supervised on HDFS_v1 labels; the window model is unsupervised, so it generalizes to new datasets  
